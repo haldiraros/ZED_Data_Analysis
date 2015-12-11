@@ -9,7 +9,16 @@ output:
     keep_md: yes
     toc: yes
 ---
-#Wstęp
+#Wstęp - podsumowanie analizy.
+
+Analizowany zbiór danych posiada bardzo wiele atrybutów (781) co znacząco utrudnia jego rzetelną analizę. Dodatkowo dla osoby niezaznajomionej z tematem protein i ligandów niektóre z kolumn danych wydają się dość abstrakcyjne. Zapewne analiza tego zbioru była by wielokrotnie łatwiejsza dla na przykład studenta biochemii. 
+
+Ze względu na ilość atrybutóW utrudniona była na przykład analiza korelacji. Dla czytelnego przedstawienia korelacji konieczny był podział na grupy kolumn. Dokonanie tego w odpowiedni sposób wymagało zapoznania się z charakterystyką danych.
+
+Ilość klas w analizowanym zbiorze danych znaczaco utrudniała zbudowanie klasyfikatora. W celu uzyskania wyniku w sensownym czasie w warunkach domowych konieczne było mocne ograniczenie zbioru klas oraz używanie stosunkowo niskich wartości parametrów dla algorytmu tworzącego model.
+Niewątplie dostęp do potężniejszej maszyny bądź obsługa przetwarzania równoległego pomogłyby w tym aspekcie (Biblioteki pozwalające na równoległe przetwarzanie w R niestety nie występują dla nowszych wersji języka)
+
+Mimo wpomnianych problemóW wykonywanie raportu niewątpliwie poszerzyło moją wiedzę na temat analizy i raportowania danych w R. Dodatkowo zachęciło mnie to nieco bliższego zapoznania się z projektem PDB - Protein Data Bank w późniejszym czasie.
 
 #Przygotowanie do pracy
 ###Wykorzystane biblioteki
@@ -93,11 +102,13 @@ dist_obs <- dist_obs  %>% select(-(local_BAa:local_ZD_plus_a),-(fo_col:weight_co
 
 W tej sekcji sprawdzimy korelację między zmiennymi zbioru danych. Ze względu na ilość kolumn w zbiorze danych (781) próba sprawdzenia korelacji dla każdej pary zmiennych była by nierozważna. bardzo trudno było by zinterpretować i przedstawić graficznie tak dużą macierz korelacji natomiast jej wyliczenie wymagało by dużych zasobów i charakteryzowało by się bardzo długim czasem trwania.
 
-W zastępstwie wykorzystamy pewnie własności zbioru danych wynikające z jego opisu by przedstawić korelacje między niektórymi podzbiorami kolumn które powinny pokazać ciekawe 
+W zastępstwie wykorzystamy pewnie własności zbioru danych wynikające z jego opisu by przedstawić korelacje między niektórymi podzbiorami kolumn które powinny pokazać interesujace własności.
 
 ###Korelacja między kolumnami z wyłączeniem kolumn zaczynających się od "part"
 
-```{r correlation1, cache=TRUE}
+Możemy zaobserwować korelację niektórych zmiennych. W następnej sekcji można zobaczyć dokładniejszy obraz korelacji między wartościami local i dict.
+
+```{r correlation1, cache=TRUE, warning=FALSE}
 #korelacja działa tylko na wartościach numerycznych
 
 numeric_subset <- dist_obs %>% select(which(sapply(., is.numeric)))
@@ -119,7 +130,7 @@ Na uwagę wysoki stopień korelacji liczby atomów (local_res_atom_non_h_count) 
 
 Dodatkowo można zauważyć że liczby poszczególnych typów atomów (C,S,O,N -- prawdopodobnie wskazujące symbole chemiczne zliczanych atomów) są również skorelowane z ogólną liczbą atomów. Logicznie wraz z zmianą ogólnej liczby atomów w ligandzie zmienia się też liczba atomów konkretnych pierwiastków.
 
-```{r correlation2, cache=TRUE}
+```{r correlation2, cache=TRUE, warning=FALSE}
 #locals
 local_dict<- dist_obs %>% select(starts_with("local"),starts_with("dict") )
 local_dictCor <- cor(local_dict,use="pairwise.complete.obs")
@@ -128,7 +139,10 @@ corrplot(local_dictCor, method="color",type="upper",order="hclust",tl.col="black
 ```
 
 ###Korelacja między kolumnami dla odcięcia "part_01"
-```{r correlation3, cache=TRUE}
+
+Na korelogramie można zobaczyc że mocno między sobą skorelowane są niezmienniki kształtu i gęstości (O3, O4, O5, FL,I1, I2, I3, I4, I5, I6). Również znormalizowane wartości niezmienników skorelowane są z wartościami przeskalowanymi. Nie są one jednak zbyt dobrze skorelowane z bezpośrednimi wartościami niezmienników.
+
+```{r correlation3, cache=TRUE, warning=FALSE}
 #part01
 p01 <- dist_obs %>% select(starts_with("part_01"))
 p01Cor <- cor(p01,use="pairwise.complete.obs")
@@ -140,7 +154,7 @@ corrplot(p01Cor, method="color",type="upper",order="hclust",tl.col="black")
 
 Poniżej znajduje się kilka przykładowych wykresów dla odpowiadających sobie kolumn z różnych poziomów odcięć. Dane z odpowiadających sobie kolumn są zazwyczaj dobrze skorelowane. Wysoki współczynnik korelacji został wyznaczony zawsze dla bezpośrednio kolejnych stopni odcięcia. Dla bardziej oddalonych stopni odcięcia wartości nadal są skorelowane lecz dla niektórych kolumn korelacja jest słabsza. 
 
-```{r correlationParts, cache=TRUE}
+```{r correlationParts, cache=TRUE, warning=FALSE}
 #między partami
 col_names_part<- substring(colnames(p01),9)
  for(iter in col_names_part[1:69:8]){
@@ -224,11 +238,15 @@ grid.arrange(plot_top, empty, density_plot, plot_side, ncol=2, nrow=2, widths=c(
 #Klasy charakteryzujace się największą niezgodnością liczby atomów i liczby elektronów
 
 W poniższych tabelach przedstawiamy po 10 klas charakteryzujących się największą średnią niezgodnością liczby atomów i elektronów w stosunku do danych pochodzących z tablicy pierwiastków. Dla każdej klasy podane zostały wartości:
-*licznosc.klasy
-*srednia.niezgodnosc - średnia niezgodność liczby atomów lub elektronów dla danej klasy;
-*wariancja.niezgodnosci - wariancja niezgodnosci liczby atomów lub elektronów dla danej klasy;
-*min.niezgodnosc - minimalna niezgodność osiągnięta dla danej klasy;
-*max.niezgodnosc - maksymalna niezgodność osiągnięta dla danej klasy.
+
+  * licznosc.klasy
+  * wart.slownikowa - wartość słownikowa z którą porównujemy
+  * min.w.klasie - minimalna wartość z local
+  * max.w.klasie - maksymalna wartość z local
+  * srednia.niezgodnosc - średnia niezgodność liczby atomów lub elektronów dla danej klasy;
+  * wariancja.niezgodnosci - wariancja niezgodnosci liczby atomów lub elektronów dla danej klasy;
+  * min.niezgodnosc - minimalna niezgodność osiągnięta dla danej klasy;
+  * max.niezgodnosc - maksymalna niezgodność osiągnięta dla danej klasy.
 
 W przypadkach gdy wartości min i max są równe w polu wariancji występuje wartość NA.
 
@@ -237,7 +255,7 @@ variance_atoms <- dist_obs %>%
   select(pdb_code,res_name,local_res_atom_non_h_count,dict_atom_non_h_count) %>% 
   mutate(vari=abs(local_res_atom_non_h_count - dict_atom_non_h_count)) %>% 
   group_by(res_name) %>%
-  summarise(srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>% 
+  summarise(licznosc.klasy=n(),wart.slownikowa=first(dict_atom_non_h_count),min.w.klasie=min(local_res_atom_non_h_count),max.w.klasie=max(local_res_atom_non_h_count),srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>% 
   arrange(desc(srednia.niezgodnosc))
 kable(head(variance_atoms,10))
 
@@ -245,13 +263,17 @@ variance_electrons <- dist_obs %>%
   select(pdb_code,res_name,local_res_atom_non_h_electron_sum ,dict_atom_non_h_electron_sum) %>% 
   mutate(vari=abs(local_res_atom_non_h_electron_sum - dict_atom_non_h_electron_sum)) %>% 
   group_by(res_name) %>%
-  summarise(srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>%
+  summarise(licznosc.klasy=n(),wart.slownikowa=first(dict_atom_non_h_electron_sum),min.w.klasie=min(local_res_atom_non_h_electron_sum),max.w.klasie=max(local_res_atom_non_h_electron_sum),srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>%
   arrange(desc(srednia.niezgodnosc))
 
 kable(head(variance_electrons,10))
 ```
 
 #Rozkład wartości kolumn zaczynających się od part_01
+
+W tej sekcji zobrazowano rozkłady wartości kolumn należących do pierwszego odcięcia. 
+
+Jak łatwo zauważyć dla wielu z kolumn wartości w zbiorze danych skupione są w okolicy zera za wyjątkiem pewnych nieraz daleko oddalonych ekstremów. Możliwe, że obecność takich ekstremów jest charakterystyczna dla określonych klas ligandów co mogło by wspomóc dalszą analizę i klasyfikację.
 
 ```{r distrib_part_01, message=FALSE, warning=FALSE}
 fn <- function (data, x,y,ncol_plots) {
@@ -281,7 +303,7 @@ W tej sekcji sprawdzimy czy możliwe jest przewidywanie liczby atomów i liczby 
 
 ###Przewidywanie liczby atomów na podstawie wartości z pozostałych kolumn
 
-```{r atoms_predict, results="asis",  message=FALSE, fig.width=7,fig.height=7, cache=TRUE }
+```{r atoms_predict, results="asis",  message=FALSE, fig.width=7,fig.height=7, cache=TRUE, warning=FALSE }
 #W celu pozbycia się wartości NA zamieniamy je tutaj na zero.
   dist_obs_NA0 <- dist_obs  %>% mutate_each(funs(replace(., which(is.na(.)), 0)),which( sapply(., is.numeric)) 
                                             )
@@ -319,9 +341,9 @@ Jak widać najważniejsza przy tworzeniu modelu była teoretyczna liczba atomów
 
 ###Przewidywanie liczby elektronóW na podstawie wartości z pozostałych kolumn 
 
-Powtarzamy czynności wykonane wcześniej przy próbie przewidzenia liczby atomów.
+Powtarzamy dla elektronów czynności wykonane wcześniej przy próbie przewidzenia liczby atomów.
 
-```{r elec_predict,results="asis", message=FALSE, fig.width=7,fig.height=7 , cache=TRUE}
+```{r elec_predict,results="asis", message=FALSE, fig.width=7,fig.height=7 , cache=TRUE, warning=FALSE }
 
   for_elec_pred <- dist_obs_NA0 %>% select(which( sapply(.,is.numeric)))
   ctrl<-trainControl(method = "cv",number = 10)
@@ -398,7 +420,7 @@ Uzyskany zbiór danych zostanie następnie stratyfikowany na zbiór treningowy i
    
 ```
 
-Po uzyskaniu modelu należy ocenić jego jakość. W tym przypadku zrobimy to wykorzystując macierz pomyłek.
+Po uzyskaniu modelu należy ocenić jego jakość. W tym przypadku zrobimy to wykorzystując macierz pomyłek oraz miary dla każdej z klas
 
 ```{r evaluateClassification, cache=TRUE}
    
@@ -407,5 +429,9 @@ Po uzyskaniu modelu należy ocenić jego jakość. W tym przypadku zrobimy to wy
   cm <- confusionMatrix(data = predClasses, testing$res_name)
   
   kable(cm$table)
+  
+  kable(cm$byClass)
      
 ```
+
+Jak można zauważyć jakość klasyfikacji może pozostawiać wiele do życzenia. Dla wielu z klas pojawiają się spore błędy. Mając do dyspozycji lepsza maszynę można by generować model dla większego parametru ntree. Przeglądając dyskusje na temat klasyfikacji z użyciem algorytmu RandomForest znalazłem propozycje by dla kilkuset kolumn parametr ten sięgał kilku tysięcy.

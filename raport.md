@@ -1,7 +1,16 @@
 # Raport z analizy danych
 Marcin Błaszyk  
 `r format(Sys.Date(), "%B %d, %Y")`  
-#Wstęp
+#Wstęp - podsumowanie analizy.
+
+Analizowany zbiór danych posiada bardzo wiele atrybutów (781) co znacząco utrudnia jego rzetelną analizę. Dodatkowo dla osoby niezaznajomionej z tematem protein i ligandów niektóre z kolumn danych wydają się dość abstrakcyjne. Zapewne analiza tego zbioru była by wielokrotnie łatwiejsza dla na przykład studenta biochemii. 
+
+Ze względu na ilość atrybutóW utrudniona była na przykład analiza korelacji. Dla czytelnego przedstawienia korelacji konieczny był podział na grupy kolumn. Dokonanie tego w odpowiedni sposób wymagało zapoznania się z charakterystyką danych.
+
+Ilość klas w analizowanym zbiorze danych znaczaco utrudniała zbudowanie klasyfikatora. W celu uzyskania wyniku w sensownym czasie w warunkach domowych konieczne było mocne ograniczenie zbioru klas oraz używanie stosunkowo niskich wartości parametrów dla algorytmu tworzącego model.
+Niewątplie dostęp do potężniejszej maszyny bądź obsługa przetwarzania równoległego pomogłyby w tym aspekcie (Biblioteki pozwalające na równoległe przetwarzanie w R niestety nie występują dla nowszych wersji języka)
+
+Mimo wpomnianych problemóW wykonywanie raportu niewątpliwie poszerzyło moją wiedzę na temat analizy i raportowania danych w R. Dodatkowo zachęciło mnie to nieco bliższego zapoznania się z projektem PDB - Protein Data Bank w późniejszym czasie.
 
 #Przygotowanie do pracy
 ###Wykorzystane biblioteki
@@ -100,9 +109,11 @@ dist_obs <- dist_obs  %>% select(-(local_BAa:local_ZD_plus_a),-(fo_col:weight_co
 
 W tej sekcji sprawdzimy korelację między zmiennymi zbioru danych. Ze względu na ilość kolumn w zbiorze danych (781) próba sprawdzenia korelacji dla każdej pary zmiennych była by nierozważna. bardzo trudno było by zinterpretować i przedstawić graficznie tak dużą macierz korelacji natomiast jej wyliczenie wymagało by dużych zasobów i charakteryzowało by się bardzo długim czasem trwania.
 
-W zastępstwie wykorzystamy pewnie własności zbioru danych wynikające z jego opisu by przedstawić korelacje między niektórymi podzbiorami kolumn które powinny pokazać ciekawe 
+W zastępstwie wykorzystamy pewnie własności zbioru danych wynikające z jego opisu by przedstawić korelacje między niektórymi podzbiorami kolumn które powinny pokazać interesujace własności.
 
 ###Korelacja między kolumnami z wyłączeniem kolumn zaczynających się od "part"
+
+Możemy zaobserwować korelację niektórych zmiennych. W następnej sekcji można zobaczyć dokładniejszy obraz korelacji między wartościami local i dict.
 
 
 ```r
@@ -113,14 +124,6 @@ numeric_subset <- dist_obs %>% select(which(sapply(., is.numeric)))
 #not parts
 noPart <- numeric_subset %>% select(-starts_with("part"))
 noPartCor <- cor(noPart,use="pairwise.complete.obs")
-```
-
-```
-## Warning in cor(noPart, use = "pairwise.complete.obs"): odchylenie
-## standardowe wynosi zero
-```
-
-```r
 noPartCor[is.na(noPartCor)] <- 0
 corrplot(noPartCor, method="color",type="upper",order="hclust",tl.col="black")
 ```
@@ -141,14 +144,6 @@ Dodatkowo można zauważyć że liczby poszczególnych typów atomów (C,S,O,N -
 #locals
 local_dict<- dist_obs %>% select(starts_with("local"),starts_with("dict") )
 local_dictCor <- cor(local_dict,use="pairwise.complete.obs")
-```
-
-```
-## Warning in cor(local_dict, use = "pairwise.complete.obs"): odchylenie
-## standardowe wynosi zero
-```
-
-```r
 local_dictCor[is.na(local_dictCor)] <-0
 corrplot(local_dictCor, method="color",type="upper",order="hclust",tl.col="black")
 ```
@@ -156,6 +151,9 @@ corrplot(local_dictCor, method="color",type="upper",order="hclust",tl.col="black
 ![](raport_files/figure-html/correlation2-1.png) 
 
 ###Korelacja między kolumnami dla odcięcia "part_01"
+
+Na korelogramie można zobaczyc że mocno między sobą skorelowane są niezmienniki kształtu i gęstości (O3, O4, O5, FL,I1, I2, I3, I4, I5, I6). Również znormalizowane wartości niezmienników skorelowane są z wartościami przeskalowanymi. Nie są one jednak zbyt dobrze skorelowane z bezpośrednimi wartościami niezmienników.
+
 
 ```r
 #part01
@@ -181,11 +179,6 @@ col_names_part<- substring(colnames(p01),9)
      xCor[is.na(xCor)]<-0
      corrplot(xCor, method="color",type="upper",order="alphabet",tl.col="black")
  }
-```
-
-```
-## Warning in 1:69:8: wyrażenie liczbowe posiada 69 elementów: użyto tylko
-## pierwszego
 ```
 
 ![](raport_files/figure-html/correlationParts-1.png) ![](raport_files/figure-html/correlationParts-2.png) ![](raport_files/figure-html/correlationParts-3.png) ![](raport_files/figure-html/correlationParts-4.png) ![](raport_files/figure-html/correlationParts-5.png) ![](raport_files/figure-html/correlationParts-6.png) ![](raport_files/figure-html/correlationParts-7.png) ![](raport_files/figure-html/correlationParts-8.png) 
@@ -274,11 +267,15 @@ grid.arrange(plot_top, empty, density_plot, plot_side, ncol=2, nrow=2, widths=c(
 #Klasy charakteryzujace się największą niezgodnością liczby atomów i liczby elektronów
 
 W poniższych tabelach przedstawiamy po 10 klas charakteryzujących się największą średnią niezgodnością liczby atomów i elektronów w stosunku do danych pochodzących z tablicy pierwiastków. Dla każdej klasy podane zostały wartości:
-*licznosc.klasy
-*srednia.niezgodnosc - średnia niezgodność liczby atomów lub elektronów dla danej klasy;
-*wariancja.niezgodnosci - wariancja niezgodnosci liczby atomów lub elektronów dla danej klasy;
-*min.niezgodnosc - minimalna niezgodność osiągnięta dla danej klasy;
-*max.niezgodnosc - maksymalna niezgodność osiągnięta dla danej klasy.
+
+  * licznosc.klasy
+  * wart.slownikowa - wartość słownikowa z którą porównujemy
+  * min.w.klasie - minimalna wartość z local
+  * max.w.klasie - maksymalna wartość z local
+  * srednia.niezgodnosc - średnia niezgodność liczby atomów lub elektronów dla danej klasy;
+  * wariancja.niezgodnosci - wariancja niezgodnosci liczby atomów lub elektronów dla danej klasy;
+  * min.niezgodnosc - minimalna niezgodność osiągnięta dla danej klasy;
+  * max.niezgodnosc - maksymalna niezgodność osiągnięta dla danej klasy.
 
 W przypadkach gdy wartości min i max są równe w polu wariancji występuje wartość NA.
 
@@ -288,32 +285,32 @@ variance_atoms <- dist_obs %>%
   select(pdb_code,res_name,local_res_atom_non_h_count,dict_atom_non_h_count) %>% 
   mutate(vari=abs(local_res_atom_non_h_count - dict_atom_non_h_count)) %>% 
   group_by(res_name) %>%
-  summarise(srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>% 
+  summarise(licznosc.klasy=n(),wart.slownikowa=first(dict_atom_non_h_count),min.w.klasie=min(local_res_atom_non_h_count),max.w.klasie=max(local_res_atom_non_h_count),srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>% 
   arrange(desc(srednia.niezgodnosc))
 kable(head(variance_atoms,10))
 ```
 
 
 
-res_name    srednia.niezgodnosc   wariancja.niezgodnosci   min.niezgodnosc   max.niezgodnosc
----------  --------------------  -----------------------  ----------------  ----------------
-PEU                    66.50000                  12.5000                64                69
-PC1                    33.33333                 252.3333                15                43
-CPQ                    33.00000                       NA                33                33
-JEF                    33.00000                       NA                33                33
-VV7                    33.00000                       NA                33                33
-M0E                    32.00000                       NA                32                32
-PTY                    31.00000                   0.0000                31                31
-LI1                    29.50000                  12.5000                27                32
-IP9                    27.00000                       NA                27                27
-PEF                    27.00000                       NA                27                27
+res_name    licznosc.klasy   wart.slownikowa   min.w.klasie   max.w.klasie   srednia.niezgodnosc   wariancja.niezgodnosci   min.niezgodnosc   max.niezgodnosc
+---------  ---------------  ----------------  -------------  -------------  --------------------  -----------------------  ----------------  ----------------
+PEU                      2                83             14             19              66.50000                  12.5000                64                69
+PC1                      3                54             11             39              33.33333                 252.3333                15                43
+CPQ                      1                60             27             27              33.00000                       NA                33                33
+JEF                      1                41              8              8              33.00000                       NA                33                33
+VV7                      1               128             95             95              33.00000                       NA                33                33
+M0E                      1               109             77             77              32.00000                       NA                32                32
+PTY                      2                50             19             19              31.00000                   0.0000                31                31
+LI1                      2                45             13             18              29.50000                  12.5000                27                32
+IP9                      1                51             24             24              27.00000                       NA                27                27
+PEF                      1                47             20             20              27.00000                       NA                27                27
 
 ```r
 variance_electrons <- dist_obs %>% 
   select(pdb_code,res_name,local_res_atom_non_h_electron_sum ,dict_atom_non_h_electron_sum) %>% 
   mutate(vari=abs(local_res_atom_non_h_electron_sum - dict_atom_non_h_electron_sum)) %>% 
   group_by(res_name) %>%
-  summarise(srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>%
+  summarise(licznosc.klasy=n(),wart.slownikowa=first(dict_atom_non_h_electron_sum),min.w.klasie=min(local_res_atom_non_h_electron_sum),max.w.klasie=max(local_res_atom_non_h_electron_sum),srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>%
   arrange(desc(srednia.niezgodnosc))
 
 kable(head(variance_electrons,10))
@@ -321,20 +318,24 @@ kable(head(variance_electrons,10))
 
 
 
-res_name    srednia.niezgodnosc   wariancja.niezgodnosci   min.niezgodnosc   max.niezgodnosc
----------  --------------------  -----------------------  ----------------  ----------------
-PEU                    443.0000                   578.00               426               460
-CPQ                    225.0000                       NA               225               225
-VV7                    224.0000                       NA               224               224
-JEF                    213.0000                       NA               213               213
-PC1                    211.6667                 11064.33                91               284
-M0E                    196.0000                       NA               196               196
-PEF                    188.0000                       NA               188               188
-PTY                    186.0000                     0.00               186               186
-IP9                    185.0000                       NA               185               185
-LI1                    183.0000                   450.00               168               198
+res_name    licznosc.klasy   wart.slownikowa   min.w.klasie   max.w.klasie   srednia.niezgodnosc   wariancja.niezgodnosci   min.niezgodnosc   max.niezgodnosc
+---------  ---------------  ----------------  -------------  -------------  --------------------  -----------------------  ----------------  ----------------
+PEU                      2               554             94            128              443.0000                   578.00               426               460
+CPQ                      1               393            168            168              225.0000                       NA               225               225
+VV7                      1               866            642            642              224.0000                       NA               224               224
+JEF                      1               267             54             54              213.0000                       NA               213               213
+PC1                      3               350             66            259              211.6667                 11064.33                91               284
+M0E                      1               736            540            540              196.0000                       NA               196               196
+PEF                      1               308            120            120              188.0000                       NA               188               188
+PTY                      2               326            140            140              186.0000                     0.00               186               186
+IP9                      1               386            201            201              185.0000                       NA               185               185
+LI1                      2               276             78            108              183.0000                   450.00               168               198
 
 #Rozkład wartości kolumn zaczynających się od part_01
+
+W tej sekcji zobrazowano rozkłady wartości kolumn należących do pierwszego odcięcia. 
+
+Jak łatwo zauważyć dla wielu z kolumn wartości w zbiorze danych skupione są w okolicy zera za wyjątkiem pewnych nieraz daleko oddalonych ekstremów. Możliwe, że obecność takich ekstremów jest charakterystyczna dla określonych klas ligandów co mogło by wspomóc dalszą analizę i klasyfikację.
 
 
 ```r
@@ -408,68 +409,8 @@ W tej sekcji sprawdzimy czy możliwe jest przewidywanie liczby atomów i liczby 
       data = for_atom_pred, 
       method = "lm",
       trControl = ctrl)
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```r
+  
   t1 <- predict(test1)
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```r
   outs <- data.frame(cbind(Predicted=t1,Observed=for_atom_pred$local_res_atom_non_h_count))
   ggplot(data = outs, aes(Observed,Predicted))+geom_point() +theme_bw()
 ```
@@ -505,7 +446,7 @@ Jak widać najważniejsza przy tworzeniu modelu była teoretyczna liczba atomów
 
 ###Przewidywanie liczby elektronóW na podstawie wartości z pozostałych kolumn 
 
-Powtarzamy czynności wykonane wcześniej przy próbie przewidzenia liczby atomów.
+Powtarzamy dla elektronów czynności wykonane wcześniej przy próbie przewidzenia liczby atomów.
 
 
 ```r
@@ -516,68 +457,8 @@ Powtarzamy czynności wykonane wcześniej przy próbie przewidzenia liczby atom�
       data = for_elec_pred, 
       method = "lm",
       trControl = ctrl)
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```r
+  
   t2 <- predict(test2)
-```
-
-```
-## Warning in predict.lm(modelFit, newdata): prediction from a rank-deficient
-## fit may be misleading
-```
-
-```r
   outs <- data.frame(cbind(Predicted=t2,Observed=for_atom_pred$local_res_atom_non_h_electron_sum))
   ggplot(data = outs, aes(Observed,Predicted))+geom_point() +theme_bw()
 ```
@@ -668,7 +549,7 @@ Uzyskany zbiór danych zostanie następnie stratyfikowany na zbiór treningowy i
 ##     combine
 ```
 
-Po uzyskaniu modelu należy ocenić jego jakość. W tym przypadku zrobimy to wykorzystując macierz pomyłek.
+Po uzyskaniu modelu należy ocenić jego jakość. W tym przypadku zrobimy to wykorzystując macierz pomyłek oraz miary dla każdej z klas
 
 
 ```r
@@ -700,3 +581,31 @@ NAG      0     4     5    6    1    1     1     7    0    10     2    1    7    
 PO4      0     0     0    0    1    0     0     0    0     0     0    1    0    0    1     0     4     4     0
 SO4      9     0     0   21   20    0     3     0    4    15     2    4   10    4    5     0    50   241     3
 ZN       1     4     0   19    0   15     0     1   20     0     0    0    6   18    1     1     4     1   167
+
+```r
+  kable(cm$byClass)
+```
+
+              Sensitivity   Specificity   Pos Pred Value   Neg Pred Value   Prevalence   Detection Rate   Detection Prevalence   Balanced Accuracy
+-----------  ------------  ------------  ---------------  ---------------  -----------  ---------------  ---------------------  ------------------
+Class: ACT      0.3170732     0.9856287        0.3513514        0.9832736    0.0239626        0.0075979              0.0216248           0.6513510
+Class: ADP      0.4411765     0.9910555        0.5000000        0.9886972    0.0198714        0.0087668              0.0175336           0.7161160
+Class: ATP      0.3461538     0.9922849        0.4090909        0.9899349    0.0151958        0.0052601              0.0128580           0.6692194
+Class: CA       0.5030303     0.9586028        0.5646259        0.9475703    0.0964348        0.0485096              0.0859147           0.7308166
+Class: CL       0.4900000     0.9633768        0.4537037        0.9681847    0.0584454        0.0286382              0.0631210           0.7266884
+Class: CU       0.1538462     1.0000000        1.0000000        0.9871119    0.0151958        0.0023378              0.0023378           0.5769231
+Class: EDO      0.2794118     0.9890444        0.5135135        0.9707288    0.0397428        0.0111046              0.0216248           0.6342281
+Class: FAD      0.7179487     0.9964115        0.8235294        0.9934407    0.0227937        0.0163647              0.0198714           0.8571801
+Class: FE       0.0000000     0.9970256        0.0000000        0.9824150    0.0175336        0.0000000              0.0029223           0.4985128
+Class: GOL      0.7577320     0.8978247        0.4867550        0.9666430    0.1133840        0.0859147              0.1765050           0.8277783
+Class: HEM      0.8378378     0.9926695        0.8378378        0.9926695    0.0432496        0.0362361              0.0432496           0.9152537
+Class: K        0.1379310     0.9970273        0.4444444        0.9853114    0.0169492        0.0023378              0.0052601           0.5674792
+Class: MG       0.2400000     0.9776536        0.4000000        0.9539673    0.0584454        0.0140269              0.0350672           0.6088268
+Class: MN       0.1111111     0.9957983        0.4166667        0.9764567    0.0263004        0.0029223              0.0070134           0.5534547
+Class: NA       0.1186441     0.9878935        0.2592593        0.9691211    0.0344828        0.0040912              0.0157802           0.5532688
+Class: NAG      0.8181818     0.9615385        0.5664336        0.9885204    0.0578609        0.0473407              0.0835769           0.8898601
+Class: PO4      0.0533333     0.9957213        0.3636364        0.9582353    0.0438340        0.0023378              0.0064290           0.5245273
+Class: SO4      0.8169492     0.8940678        0.6163683        0.9590909    0.1724138        0.1408533              0.2285213           0.8555085
+Class: ZN       0.7877358     0.9392929        0.6472868        0.9690296    0.1239041        0.0976037              0.1507890           0.8635144
+
+Jak można zauważyć jakość klasyfikacji może pozostawiać wiele do życzenia. Dla wielu z klas pojawiają się spore błędy. Mając do dyspozycji lepsza maszynę można by generować model dla większego parametru ntree. Przeglądając dyskusje na temat klasyfikacji z użyciem algorytmu RandomForest znalazłem propozycje by dla kilkuset kolumn parametr ten sięgał kilku tysięcy.
