@@ -1,0 +1,411 @@
+---
+title: "Raport z analizy danych"
+author: "Marcin Błaszyk"
+date: '`r format(Sys.Date(), "%B %d, %Y")`'
+output: 
+  html_document: 
+    fig_height: 21
+    fig_width: 21
+    keep_md: yes
+    toc: yes
+---
+#Wstęp
+
+#Przygotowanie do pracy
+###Wykorzystane biblioteki
+
+```{r message=FALSE, biblioteki}
+library(dplyr)
+library(tidyr)
+library(knitr)
+library(reshape2)
+#rysowanie korelacji
+library(corrplot)
+#Do wykresów
+library(ggplot2)
+library(gridExtra)
+library(RColorBrewer)
+#uczenie maszynowe
+library(caret)
+```
+
+###Zapewnienie powtarzalności wyników
+Aby zapewnić powtarzalność wyników badań ustawiamy odpowiednio wartość początkową seed.
+
+```{r seed}
+set.seed(23)
+```
+
+#Wczytanie danych
+
+Dokonujemy wczytania danych wejściowych. Plik z danymi musi mieć nazwę *all_summary.txt* i znajdować się w aktywnym working directory podczas generacji raportu. Warto zauważyć, że wbrew informacji w opisie zbioru danych wartości brakujące w kolumnach part_yy_xxx oznaczane są przez "nan" a nie "NA". Zmiana wprowadzona została prawdopodobnie przez osobę przygotowującą zbiór danych ponieważ ciąg NA jest jednym z oznaczeń klas występujących w zbiorze.
+
+```{r data_in, cache=TRUE}
+in_data <- tbl_df(
+          read.csv("all_summary.txt",
+                   sep = ';',
+                   dec = '.',
+                   na.strings = c("nan"," ","")))
+```
+
+#Ograniczenie zbioru danych
+
+Ważną częścią pracy z danymi jest ograniczenie dostępnych danych do interesujących nas wartości. W tym przypadku stosujemy dwa kryteria ograniczenia przedstawione poniżej.
+
+###Ograniczenie na podstawie wartości res_name
+
+Pozbywamy się obserwacji dla których wartość zmiennej res_name jest równa “DA”,“DC”,“DT”, “DU”, “DG”, “DI”,“UNK”, “UNX”, “UNL”, “PR”, “PD”, “Y1”, “EU”, “N”, “15P”, “UQ”, “PX4” lub “NAN”.
+Dodatkowo pozbywamy się obserwacji dla których klasa (wartość res_name) jest nieokreślona.
+
+```{r filter_res_names}
+filtered <- in_data%>% filter(!(res_name %in% c('DA','DC','DT','DU','DG','DI','UNK','UNX','UNL','PR','PD','Y1','EU','N','15P','UQ','PX4','NAN'))) 
+```
+
+###Unikatowe pary wartości pdb_code i res_name
+Do celów analizy zachowujemy jedynie unikalne pary wartości pdb_code i res_name.
+```{r dist_res_names}
+dist_obs <- filtered %>% distinct(pdb_code,res_name)
+```
+
+#Krótkie podsumowanie
+
+Oto tabela prezentująca krótkie podsumowanie wartości w każdej kolumnie.
+
+```{r summary}
+kable(summary(dist_obs))
+```
+
+Po oczyszczeniu danych w zbiorze występuje `r count(dist_obs)` obserwacji.
+
+###Dodatkowe przygotowanie danych
+
+Jak widać na powyższym podsumowaniu w danych znajduje się wiele pustych wartości. Podczas dalszej analizy konieczne może okazać się odpowiednie ich obsłużenie - przez podmianę na inne wartości bądź wykorzystanie udostępnionych przez metody parametrów wskazujących sposób obsługi wartości NA.
+
+Dodatkowo w parę kolumn zawiera jedynie wartości NA. Nie wnoszą one absolutnie nic do dalszej analizy i można zarazem się ich pozbyć.
+
+```{r cleaning}
+
+dist_obs <- dist_obs  %>% select(-(local_BAa:local_ZD_plus_a),-(fo_col:weight_col))
+
+```
+
+#Sprawdzenie korelacji pomiędzy zmiennymi
+
+W tej sekcji sprawdzimy korelację między zmiennymi zbioru danych. Ze względu na ilość kolumn w zbiorze danych (781) próba sprawdzenia korelacji dla każdej pary zmiennych była by nierozważna. bardzo trudno było by zinterpretować i przedstawić graficznie tak dużą macierz korelacji natomiast jej wyliczenie wymagało by dużych zasobów i charakteryzowało by się bardzo długim czasem trwania.
+
+W zastępstwie wykorzystamy pewnie własności zbioru danych wynikające z jego opisu by przedstawić korelacje między niektórymi podzbiorami kolumn które powinny pokazać ciekawe 
+
+###Korelacja między kolumnami z wyłączeniem kolumn zaczynających się od "part"
+
+```{r correlation1, cache=TRUE}
+#korelacja działa tylko na wartościach numerycznych
+
+numeric_subset <- dist_obs %>% select(which(sapply(., is.numeric)))
+ 
+#not parts
+noPart <- numeric_subset %>% select(-starts_with("part"))
+noPartCor <- cor(noPart,use="pairwise.complete.obs")
+noPartCor[is.na(noPartCor)] <- 0
+corrplot(noPartCor, method="color",type="upper",order="hclust",tl.col="black")
+
+```
+
+####Korelacja między liczbami atomów i elektronów z pliku i wartościami teoretycznymi pochodzącymi z tablicy pierwiastków
+
+Poniżej zobrazowano macierz korelacji dla kolumn local - opisujących liczby atomów i elektronów z pliku, oraz dict - opisujących te same wartości wyznaczone na podstawie danych słownikowych.
+
+Jak widać szczególnie mocno skorelowane są wartości odpowiadających sobie kolumn lokalnych i słownikowych.
+Na uwagę wysoki stopień korelacji liczby atomów (local_res_atom_non_h_count) i liczby elektronów (local_res_atom_non_h_electron_sum). Ta obserwacja zostanie przywołana w następnej sekcji.
+
+Dodatkowo można zauważyć że liczby poszczególnych typów atomów (C,S,O,N -- prawdopodobnie wskazujące symbole chemiczne zliczanych atomów) są również skorelowane z ogólną liczbą atomów. Logicznie wraz z zmianą ogólnej liczby atomów w ligandzie zmienia się też liczba atomów konkretnych pierwiastków.
+
+```{r correlation2, cache=TRUE}
+#locals
+local_dict<- dist_obs %>% select(starts_with("local"),starts_with("dict") )
+local_dictCor <- cor(local_dict,use="pairwise.complete.obs")
+local_dictCor[is.na(local_dictCor)] <-0
+corrplot(local_dictCor, method="color",type="upper",order="hclust",tl.col="black")
+```
+
+###Korelacja między kolumnami dla odcięcia "part_01"
+```{r correlation3, cache=TRUE}
+#part01
+p01 <- dist_obs %>% select(starts_with("part_01"))
+p01Cor <- cor(p01,use="pairwise.complete.obs")
+p01Cor[is.na(p01Cor)] <-0
+corrplot(p01Cor, method="color",type="upper",order="hclust",tl.col="black")
+```
+
+###Korelacja między tymi samymi atrybutami dla różnych progów odcięć.
+
+Poniżej znajduje się kilka przykładowych wykresów dla odpowiadających sobie kolumn z różnych poziomów odcięć. Dane z odpowiadających sobie kolumn są zazwyczaj dobrze skorelowane. Wysoki współczynnik korelacji został wyznaczony zawsze dla bezpośrednio kolejnych stopni odcięcia. Dla bardziej oddalonych stopni odcięcia wartości nadal są skorelowane lecz dla niektórych kolumn korelacja jest słabsza. 
+
+```{r correlationParts, cache=TRUE}
+#między partami
+col_names_part<- substring(colnames(p01),9)
+ for(iter in col_names_part[1:69:8]){
+     x<- dist_obs %>% select(ends_with(iter))
+     xCor <- cor(x,use="pairwise.complete.obs")
+     xCor[is.na(xCor)]<-0
+     corrplot(xCor, method="color",type="upper",order="alphabet",tl.col="black")
+ }
+
+```
+
+#Ilość przykładów dla każdej z klas
+
+W tej sekcji prezentujemy ilość przykładów jaką ma każda z klas.
+
+```{r results='asis', obs_per_class}
+
+obs_per_class <- dist_obs   %>% count(res_name) %>% arrange(desc(n),res_name) 
+row.names(obs_per_class)<-obs_per_class$res_name
+kable(t(obs_per_class%>%select(n)))
+
+```
+
+Jak łatwo zauważyć zbiór posiada kilka naprawdę licznych klas oraz wiele występujących w zbiorze jedynie kilkukrotnie. Wiedza ta może być pomocna w dalszej analizie do odpowiedniego ograniczania zbioru danych. Poniżej można zobaczyć poglądowo wykres słupkowy liczby wystąpień 25 najliczniejszych klas.
+
+```{r fig.width=15,fig.height=15}
+
+ggplot(data = head(obs_per_class,25), aes(reorder(res_name,n),n)) + geom_bar(stat ="identity") + geom_text(aes(label=n,colour="blue"), vjust=0.5,hjust=1.25, show_guide = FALSE) + coord_flip()+theme_bw() + theme(axis.title=element_blank())
+
+```
+
+#Rozkład liczby atomów i elektronów
+W poniższej części prezentujemy wykresy rozkładu liczby atomów i elektronów.
+
+Na rozkładzie liczby atomów można zauważyć, że bardzo dużo ligandów zawiera raczej niewielką liczbę atomów. Powyżej 60 atomów w cząsteczce posiadają jedynie nieliczne cząsteczki. Można domyślić się że będą to ligandy z bardziej złożonych protein.
+
+Rozkład liczby elektronów jest stosunkowo podobny kształtem do rozkładu atomów. Tej relacji można było spodziewać się jako, że w skład każdego atomu wchodzą elektrony a więc zmiana liczby atomów powinna wpływać na liczbę elektronów. Z tego właśnie wynika duży stopień skorelowania wartości dotyczących ilości atomów i ilości elektronów przedstawiony w poprzedniej sekcji.
+
+```{r plots1, fig.width=7, fig.height = 6 }
+#ograniczenie wartości do istotnych dla wykresów
+for_plots <- dist_obs %>% select(local_res_atom_non_h_count,local_res_atom_non_h_electron_sum)
+
+
+ggplot(for_plots,aes(x = local_res_atom_non_h_count)) + stat_density(colour="black", fill="red" ,alpha=0.5,rm.na=TRUE) + ggtitle("Rozkład liczby atomów") + theme_bw()
+
+ggplot(for_plots,aes(x = local_res_atom_non_h_electron_sum)) + stat_density(colour="black", fill="blue",alpha = 0.5 ,rm.na=TRUE) + ggtitle("Rozkład liczby elektronów") + theme_bw()
+
+```
+
+###Odwzorowanie wykresu
+
+Dodatkowo na podstawie wzorca z zadania przygotowaliśmy ciekawy wykres prezentujący jednocześnie oba rozkłady. Widać na nim dokładnie powiązanie między rozkładami liczby atomów i elektronów.
+
+```{r superplot, fig.width=10,fig.height=10}
+empty <- ggplot()+geom_point(aes(1,1), colour="white") +
+     theme(                              
+       plot.background = element_blank(), 
+       panel.grid.major = element_blank(), 
+       panel.grid.minor = element_blank(), 
+       panel.border = element_blank(), 
+       panel.background = element_blank(),
+       axis.title.x = element_blank(),
+       axis.title.y = element_blank(),
+       axis.text.x = element_blank(),
+       axis.text.y = element_blank(),
+       axis.ticks = element_blank()
+     )
+
+density_plot <- ggplot(for_plots,aes(x = local_res_atom_non_h_electron_sum, y = local_res_atom_non_h_count)) + stat_density2d(aes(fill = ..density..),contour = FALSE,geom = "tile", n = 200) +theme_classic()+ theme(legend.position = "none", axis.line=element_blank(),axis.title.x=element_blank(), axis.title.y=element_blank()) + scale_y_continuous(expand = c(0,0)) + scale_x_continuous(expand = c(0,0)) + scale_fill_gradientn(colours=rev(brewer.pal(11,"Spectral")))
+
+#góra
+plot_top <- ggplot(for_plots,aes(x = local_res_atom_non_h_electron_sum)) + stat_bin(binwidth = max(for_plots$local_res_atom_non_h_electron_sum)/100, colour="black", fill="red",rm.na=TRUE) +theme_classic()+ theme(legend.position = "none",axis.text.x=element_blank(),axis.text.y=element_blank(),axis.title.x=element_blank(), axis.title.y=element_blank(),axis.line.y=element_blank(),axis.ticks = element_blank()) + scale_y_continuous(expand = c(0,0)) + scale_x_continuous(expand = c(0,0))
+
+#prawo
+plot_side <- ggplot(for_plots,aes(x = local_res_atom_non_h_count))+ coord_flip() + stat_bin(binwidth = max(for_plots$local_res_atom_non_h_count)/100,  colour="black", fill="red",rm.na=TRUE) +theme_classic()+ theme(legend.position = "none",axis.text.x=element_blank(),axis.text.y=element_blank(),axis.title.x=element_blank(), axis.title.y=element_blank(), axis.line.x=element_blank(),axis.ticks = element_blank()) + scale_y_continuous(expand = c(0,0)) + scale_x_continuous(expand = c(0,0))
+
+grid.arrange(plot_top, empty, density_plot, plot_side, ncol=2, nrow=2, widths=c(4, 1), heights=c(1, 4),padding = unit(0.1, "line"))
+
+```
+
+#Klasy charakteryzujace się największą niezgodnością liczby atomów i liczby elektronów
+
+W poniższych tabelach przedstawiamy po 10 klas charakteryzujących się największą średnią niezgodnością liczby atomów i elektronów w stosunku do danych pochodzących z tablicy pierwiastków. Dla każdej klasy podane zostały wartości:
+*licznosc.klasy
+*srednia.niezgodnosc - średnia niezgodność liczby atomów lub elektronów dla danej klasy;
+*wariancja.niezgodnosci - wariancja niezgodnosci liczby atomów lub elektronów dla danej klasy;
+*min.niezgodnosc - minimalna niezgodność osiągnięta dla danej klasy;
+*max.niezgodnosc - maksymalna niezgodność osiągnięta dla danej klasy.
+
+W przypadkach gdy wartości min i max są równe w polu wariancji występuje wartość NA.
+
+```{r variance_top_10}
+variance_atoms <- dist_obs %>% 
+  select(pdb_code,res_name,local_res_atom_non_h_count,dict_atom_non_h_count) %>% 
+  mutate(vari=abs(local_res_atom_non_h_count - dict_atom_non_h_count)) %>% 
+  group_by(res_name) %>%
+  summarise(srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>% 
+  arrange(desc(srednia.niezgodnosc))
+kable(head(variance_atoms,10))
+
+variance_electrons <- dist_obs %>% 
+  select(pdb_code,res_name,local_res_atom_non_h_electron_sum ,dict_atom_non_h_electron_sum) %>% 
+  mutate(vari=abs(local_res_atom_non_h_electron_sum - dict_atom_non_h_electron_sum)) %>% 
+  group_by(res_name) %>%
+  summarise(srednia.niezgodnosc=mean(vari), wariancja.niezgodnosci=var(vari), min.niezgodnosc=min(vari), max.niezgodnosc=max(vari)) %>%
+  arrange(desc(srednia.niezgodnosc))
+
+kable(head(variance_electrons,10))
+```
+
+#Rozkład wartości kolumn zaczynających się od part_01
+
+```{r distrib_part_01, message=FALSE, warning=FALSE}
+fn <- function (data, x,y,ncol_plots) {
+  cols_long <- data %>% select(x:y) %>% gather(column,value)
+  means <- cols_long %>% group_by(column) %>% summarise(g.mean= mean(value,na.rm = TRUE))
+
+  plot_part<- ggplot(cols_long)+geom_density(aes(x=value)) + facet_wrap(~ column ,ncol = ncol_plots, scales = "free")+
+  geom_vline(data = means, aes(xintercept=g.mean, color="blue"), linetype="dashed",size=2) +
+  geom_text(data=means, mapping=aes(x=g.mean, y=0, label=format(g.mean, digits=4)), size=7, angle=90, vjust=-0.5, hjust=0, color="red") +theme_bw()
+  print(plot_part)
+}
+
+part01_cols <- dist_obs %>% select(contains("part_01"))
+fn(part01_cols,1,10,2)
+fn(part01_cols,11,20,2)
+fn(part01_cols,21,30,2)
+fn(part01_cols,31,40,2)
+fn(part01_cols,41,50,2)
+fn(part01_cols,51,60,2)
+fn(part01_cols,61,69,2)
+
+```
+
+#Przewidywanie liczby atomów i liczby elektronów
+
+W tej sekcji sprawdzimy czy możliwe jest przewidywanie liczby atomów i liczby elektronów w ligandzie na podstawie wartości z pozostałych kolumn. W tym celu utworzymy z pomocą biblioteki caret odpowiednie modele regresji liniowej.
+
+###Przewidywanie liczby atomów na podstawie wartości z pozostałych kolumn
+
+```{r atoms_predict, results="asis",  message=FALSE, fig.width=7,fig.height=7, cache=TRUE }
+#W celu pozbycia się wartości NA zamieniamy je tutaj na zero.
+  dist_obs_NA0 <- dist_obs  %>% mutate_each(funs(replace(., which(is.na(.)), 0)),which( sapply(., is.numeric)) 
+                                            )
+  for_atom_pred <- dist_obs_NA0 %>% select(which( sapply(.,is.numeric)))
+  ctrl<-trainControl(method = "cv",number = 10)
+  
+  test1 <- train(local_res_atom_non_h_count ~ ., 
+      data = for_atom_pred, 
+      method = "lm",
+      trControl = ctrl)
+  
+  t1 <- predict(test1)
+  outs <- data.frame(cbind(Predicted=t1,Observed=for_atom_pred$local_res_atom_non_h_count))
+  ggplot(data = outs, aes(Observed,Predicted))+geom_point() +theme_bw()
+  
+  kable(
+    data.frame(
+      R2=R2(t1,for_atom_pred$local_res_atom_non_h_count,na.rm = TRUE),
+      RMSE=RMSE(t1,for_atom_pred$local_res_atom_non_h_count,na.rm = TRUE)
+      )
+    )
+  
+```
+
+Dodatkowo możemy dowiedzieć się interesujących rzeczy sprawdzając które kolumny były najważniejsze przy tworzeniu modelu regresji liniowej.
+
+```{r important4atoms}
+  
+  important<-varImp(test1)$importance
+  kable(t(head(important[order(-important$Overall), , drop = FALSE],20)))
+  
+```
+
+Jak widać najważniejsza przy tworzeniu modelu była teoretyczna liczba atomów ustalona na podstawie tablicy pierwiastków. Następnie brane są pod uwagę inne wartości słownikowe oraz pozostałe lokalne ilości elektronów i atomów.
+
+###Przewidywanie liczby elektronóW na podstawie wartości z pozostałych kolumn 
+
+Powtarzamy czynności wykonane wcześniej przy próbie przewidzenia liczby atomów.
+
+```{r elec_predict,results="asis", message=FALSE, fig.width=7,fig.height=7 , cache=TRUE}
+
+  for_elec_pred <- dist_obs_NA0 %>% select(which( sapply(.,is.numeric)))
+  ctrl<-trainControl(method = "cv",number = 10)
+  
+  test2 <- train(local_res_atom_non_h_electron_sum ~ ., 
+      data = for_elec_pred, 
+      method = "lm",
+      trControl = ctrl)
+  
+  t2 <- predict(test2)
+  outs <- data.frame(cbind(Predicted=t2,Observed=for_atom_pred$local_res_atom_non_h_electron_sum))
+  ggplot(data = outs, aes(Observed,Predicted))+geom_point() +theme_bw()
+  
+  kable(
+    data.frame(
+      R2=R2(t2,for_elec_pred$local_res_atom_non_h_electron_sum,na.rm = TRUE),
+      RMSE=RMSE(t2,for_elec_pred$local_res_atom_non_h_electron_sum,na.rm = TRUE)
+      )
+    )
+  
+  important_elect<-varImp(test2)$importance
+  kable(t(head(important_elect[order(-important_elect$Overall), , drop = FALSE],20)))
+  
+```
+
+#Klasyfikator wartości res_name
+
+W tej sekcji spróbujemy zbudować klasyfikator przydzielający obserwacje do odpowiednich klas res_name.
+Wykorzystamy do tego podobnie jak w poprzednim przykładzie bibliotekę caret.
+
+Ze względu na charakteryzującą język R konieczność trzymania wszystkich obiektów w pamięci oraz chęć uzyskania dokładniejszego klasyfikatora otrzymanych wyników ograniczymy odpowiednio zbiór klas które będziemy rozpatrywać.
+
+Podczas wcześniejszej analizy sprawdzaliśmy ilość przykładów należących do każdej z klas. Wiele klas występowało wśród obserwacji jedynie jeden bądź kilka razy. Z tego powodu przyjmiemy pewien próg liczności występowania klas przekazanych do klasyfikacji.
+
+W opisie danych oznaczone są kolumny które "prawdopodobnie nie będą dostępne podczas klasyfikacji". Część z nich usunęliśmy już wcześniej uznając je za nie niosące żadnej dodatkowej informacji. Pozostałych pozbędziemy się teraz. Należą do nich między innymi kolumny dict i local które całkiem prawdopodobnie mocno ułatwiłyby klasyfikację.
+
+
+Dodatkowo pozbędziemy się wartości NA w kolumnach liczbowych. Jako, że niektóre z kolumn danych posiada wartości bliskie zeru, w celu uniknięcia wprowadzania błędu klasyfikacji wartości NA zamienimy na duże wartości ujemne.
+
+Uzyskany zbiór danych zostanie następnie stratyfikowany na zbiór treningowy i testowy. Na zbiorze treningowym zostanie zbudowany model algorytmu randomForest
+
+```{r classify, cache=TRUE}
+  
+  top_res_names <- dist_obs   %>% count(res_name) %>% filter(n>100) %>% select(res_name)
+  top_dist_obs <- dist_obs %>% 
+    filter(res_name %in% top_res_names$res_name) %>%
+    select(-starts_with('dict_'),
+           -starts_with('local_'),
+           -c(title,pdb_code,res_id, chain_id,grid_space, solvent_radius, solvent_opening_radius, part_step_FoFc_std_min, part_step_FoFc_std_max, part_step_FoFc_std_step) )
+  
+  dist_obs_NAneg <- top_dist_obs  %>% 
+                    mutate_each(funs(replace(., which(is.na(.)), -999999)),which( sapply(., is.numeric)) )
+  dist_obs_NAneg<- droplevels(dist_obs_NAneg)
+  
+  inTraining<-createDataPartition(y=dist_obs_NAneg$res_name,
+                                  p=0.75,
+                                  list=FALSE)
+  
+  training <- dist_obs_NAneg[ inTraining,]
+  testing  <- dist_obs_NAneg[-inTraining,]
+  
+  ctrlClassify <- trainControl(
+    method = "repeatedcv",
+    number = 2,
+    repeats = 5)
+  
+   rfGrid <- expand.grid(mtry = 10:30)
+    fitTune <- train(res_name ~ .,
+               data = training,
+               method = "rf",
+               trControl = ctrlClassify,
+               tuneGrid = rfGrid,
+               ntree = 25)
+   
+```
+
+Po uzyskaniu modelu należy ocenić jego jakość. W tym przypadku zrobimy to wykorzystując macierz pomyłek.
+
+```{r evaluateClassification, cache=TRUE}
+   
+    predClasses <- predict(fitTune, newdata = testing)
+
+  cm <- confusionMatrix(data = predClasses, testing$res_name)
+  
+  kable(cm$table)
+     
+```
